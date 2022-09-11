@@ -73,6 +73,7 @@ def run(argv=None):
     if len([s for s in pipeline_args if '--runner' in s]) == 0:
         pipeline_args += ['\xa0', f'--runner=DataflowRunner']
     # Apache Beam実行時オプションの適用
+    print(f'known_args={known_args}')
     print(f'Beam pipeline options={pipeline_args}')
     pipeline_options = PipelineOptions(pipeline_args)
 
