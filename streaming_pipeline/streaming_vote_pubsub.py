@@ -21,8 +21,8 @@ topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
 i = 0
 while True:
     i += 1
-    data_str = f'\"Date\":\"{datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}\"'  # 時刻(ミリ秒単位)
-    data_str += f"\n\"Number\":\"{i}\""  # 実行順
+    data_str = '{' + f'\"Date\":\"{datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}\"'  # 時刻(ミリ秒単位)
+    data_str += f",\"Number\":\"{i}\""  # 実行順
     # 1秒待つ
     time.sleep(1)
     # 0〜1の間のランダム変数を生成
@@ -36,7 +36,7 @@ while True:
         vote = 'Suzuki'
     elif vote_rand < P_TANAKA + P_NAKAMURA + P_SUZUKI + P_SATO:
         vote = 'Sato'
-    data_str += f'\n\"Vote\":\"{vote}\"'
+    data_str += f',\"Vote\":\"{vote}\"' + '}'
     # データをByte化
     data = data_str.encode("utf-8")
     # データをPub/Subにパブリッシュ
