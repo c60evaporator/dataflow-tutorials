@@ -71,8 +71,7 @@ class WriteToGCS(beam.DoFn):
         filename = "-".join([self.output_path, window_start, window_end, str(shard_id)])
 
         with beam.io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
-            for message_body, publish_time in batch:
-                f.write(f"{message_body},{publish_time}\n".encode("utf-8"))
+            f.write(f"{batch}\n".encode("utf-8"))
 
 def run(argv=None):
     parser = argparse.ArgumentParser()

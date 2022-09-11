@@ -64,7 +64,7 @@ class WriteToGCS(beam.DoFn):
         ts_format = "%H:%M"
         window_start = window.start.to_utc_datetime().strftime(ts_format)
         window_end = window.end.to_utc_datetime().strftime(ts_format)
-        window_key, batch = key_value
+        tmp_key, batch = key_value
         filename = "-".join([self.output_path, window_start, window_end])
 
         with beam.io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
