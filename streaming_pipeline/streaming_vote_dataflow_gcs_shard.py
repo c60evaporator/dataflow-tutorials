@@ -6,6 +6,7 @@ import argparse
 from datetime import datetime
 import logging
 import random
+import ast
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -20,9 +21,10 @@ DEFAULT_SUBSCRIPTION = config['subscription_id']  # デフォルトのPub/Subサ
 DEFAULT_WINDOW_MINUTE = 0.5  # 集計のウィンドウ (分単位)
 DEFAULT_NUM_SHARDS = 5  # シャーディング数 (GCSへの高速書込のためのファイル分散化数)
 
-class GroupMessagesByFixedWindows(beam.PTransform):
+class TransformToDictByFixedWindows(beam.PTransform):
     """
-    Pub/Subメッセージをタイムスタンプでウィンドウ処理し、シャーディングを指定するクラス
+    Pub/Subメッセージをタイムスタンプでウィンドウ処理してデータをdict化し、シャーディングを指定してグルーピングするクラス
+    (クラス化せずに直接パイプラインを記述するとウインドウ作成後のGroupByKeyによるグルーピングがうまくいかない)
     """
 
     def __init__(self, window_size, num_shards=5):
@@ -31,31 +33,29 @@ class GroupMessagesByFixedWindows(beam.PTransform):
         self.num_shards = num_shards
 
     def expand(self, pcoll):
+        """各種処理のパイプラインを記載"""
         return (
             pcoll
             # タイムスタンプに応じてウィンドウを振り分け
             | "Window into fixed intervals"
             >> beam.WindowInto(FixedWindows(self.window_size))
-            # Dataflowで処理した時刻を表すタイムスタンプを追加
+            # Dataflowで処理した時刻を表すタイムスタンプを追加 (この時刻に応じてウィンドウが決まる)
             | "Add timestamp to windowed elements" >> beam.ParDo(AddTimestamp())
+            # 各レコードをdict形式に変換
+            | 'Format to dict' >> beam.Map(lambda record: ast.literal_eval(record))
             # GCSへの書込シャーディング(高速書込のための分散化)用にランダムなキーを割り振る
             | "Add key" >> beam.WithKeys(lambda _: random.randint(0, self.num_shards - 1))
-            # Group windowed elements by key. All the elements in the same window must fit
-            # memory for this. If not, you need to use `beam.util.BatchElements`.
+            # グルーピングしてシャーディング用キーごとにデータを一つにまとめる
             | "Group by key" >> beam.GroupByKey()
         )
 
-
 class AddTimestamp(beam.DoFn):
-    """Dataflowで処理した時刻を表すタイムスタンプを追加するクラス"""
+    """
+    Dataflowで処理した時刻を表すタイムスタンプを追加するクラス
+    """
     def process(self, element, publish_time=beam.DoFn.TimestampParam):
-        """Processes each windowed element by extracting the message body and its
-        publish time into a tuple.
-        """
-        yield (
-            element.decode("utf-8"),
-            f'\n\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"',
-        )
+        yield element.decode("utf-8")[:-1] \
+            + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"' + '}'
 
 class WriteToGCS(beam.DoFn):
     """シャーディング用キーに基づきGCSに分散書き込みするクラス"""
@@ -135,7 +135,7 @@ def run(argv=None):
         transformed = (
             messages
             # タイムスタンプでウィンドウ処理
-            | "Window into" >> GroupMessagesByFixedWindows(known_args.window_size, known_args.num_shards)
+            | "Window into" >> TransformToDictByFixedWindows(known_args.window_size, known_args.num_shards)
         )
         # GCSに書き出し
         transformed | "Write to GCS" >> beam.ParDo(WriteToGCS(known_args.output_path))
