@@ -69,6 +69,7 @@ class WriteToGCS(beam.DoFn):
         window_end = window.end.to_utc_datetime().strftime(ts_format)
         shard_id, batch = key_value
         filename = "-".join([self.output_path, window_start, window_end, str(shard_id)])
+        print('AAAAAAAAAAAAAAAAAAAA')
 
         with beam.io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
             f.write(f"{batch}\n".encode("utf-8"))
@@ -133,16 +134,16 @@ def run(argv=None):
         
         # データの変換
         # フォーマットを「単語名: カウント数」の形式に変更
-        def format_result(window_key, data):
-            data_transform = (data[0], data[1])
-            return (window_key, data_transform)
+        def format_result(shard_key, data):
+            data_transform = data[0][0] + str(shard_key)
+            return (shard_key, data_transform)
 
         transformed = (
             messages
             # タイムスタンプでウィンドウ処理
             | "Window into" >> GroupMessagesByFixedWindows(known_args.window_size, known_args.num_shards)
             # 改行で分割
-            #| 'Format' >> beam.MapTuple(format_result)
+            | 'Format' >> beam.MapTuple(format_result)
         )
         # GCSに書き出し
         transformed | "Write to GCS" >> beam.ParDo(WriteToGCS(known_args.output_path))
