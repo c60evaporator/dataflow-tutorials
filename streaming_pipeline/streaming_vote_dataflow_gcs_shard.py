@@ -21,8 +21,8 @@ DEFAULT_WINDOW_MINUTE = 0.5  # 集計のウィンドウ (分単位)
 DEFAULT_NUM_SHARDS = 5  # シャーディング数 (GCSへの高速書込のためのファイル分散化数)
 
 class GroupMessagesByFixedWindows(beam.PTransform):
-    """A composite transform that groups Pub/Sub messages based on publish time
-    and outputs a list of tuples, each containing a message and its publish time.
+    """
+    Pub/Subメッセージをタイムスタンプでウィンドウ処理し、シャーディングを指定するクラス
     """
 
     def __init__(self, window_size, num_shards=5):
@@ -33,7 +33,7 @@ class GroupMessagesByFixedWindows(beam.PTransform):
     def expand(self, pcoll):
         return (
             pcoll
-            # Bind window info to each element using element timestamp (or publish time).
+            # タイムスタンプに応じてウィンドウを振り分け
             | "Window into fixed intervals"
             >> beam.WindowInto(FixedWindows(self.window_size))
             # Dataflowで処理した時刻を表すタイムスタンプを追加
@@ -128,17 +128,17 @@ def run(argv=None):
         pipeline_args, streaming=True, save_main_session=True
     )
 
-    with beam.Pipeline(options=pipeline_options) as pipeline:
-        (
-            pipeline
-            # Because `timestamp_attribute` is unspecified in `ReadFromPubSub`, Beam
-            # binds the publish time returned by the Pub/Sub server for each message
-            # to the element's timestamp parameter, accessible via `DoFn.TimestampParam`.
-            # https://beam.apache.org/releases/pydoc/current/apache_beam.io.gcp.pubsub.html#apache_beam.io.gcp.pubsub.ReadFromPubSub
-            | "Read from Pub/Sub" >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
+    with beam.Pipeline(options=pipeline_options) as p:
+        # Pub/Subメッセージ読み込み
+        messages = p | "Read from Pub/Sub" >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
+        # データの変換
+        transformed = (
+            messages
+            # タイムスタンプでウィンドウ処理
             | "Window into" >> GroupMessagesByFixedWindows(known_args.window_size, known_args.num_shards)
-            | "Write to GCS" >> beam.ParDo(WriteToGCS(known_args.output_path))
         )
+        # GCSに書き出し
+        transformed | "Write to GCS" >> beam.ParDo(WriteToGCS(known_args.output_path))
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
