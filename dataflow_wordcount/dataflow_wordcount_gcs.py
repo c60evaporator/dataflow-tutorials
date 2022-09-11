@@ -44,27 +44,31 @@ def run(argv=None):
         '--output',
         default=f'gs://{DEFAULT_BUCKET}/results/',  # GCS に出力する
         help='Output file to write results to.')
+    # 入力した引数をknown_args(本スクリプトで使用する入出力用の引数)とpipeline_args(Apache Beam実行時のオプション)に分割
     known_args, pipeline_args = parser.parse_known_args(argv)
-
-    # プロジェクトID
-    if '--project' not in pipeline_args:
-        pipeline_args += ['--project', DEFAULT_PROJECT_ID]
-    # リージョン
-    if '--region' not in pipeline_args:
-        pipeline_args += ['--region', DEFAULT_REGION]
-    #  一時ファイルの GCS パス
-    if '--temp_location' not in pipeline_args:
-        pipeline_args += ['--temp_location', f'gs://{DEFAULT_BUCKET}/temp']
+    
+    # Apache Beam実行時オプションのデフォルト値入力
+    # プロジェクトIDのデフォルト値
+    if len([s for s in pipeline_args if '--project' in s]) == 0:
+        pipeline_args += ['\xa0', f'--project={DEFAULT_PROJECT_ID}']
+    # リージョンのデフォルト値
+    if len([s for s in pipeline_args if '--region' in s]) == 0:
+        pipeline_args += ['\xa0', f'--region={DEFAULT_REGION}']
+    # 一時ファイルの GCS パスのデフォルト値
+    if len([s for s in pipeline_args if '--temp_location' in s]) == 0:
+        pipeline_args += ['\xa0', f'--temp_location=gs://{DEFAULT_BUCKET}/temp']
+    # Dataflow ランナーのデフォルト値 (DataflowRunner)
+    if len([s for s in pipeline_args if '--runner' in s]) == 0:
+        pipeline_args += ['\xa0', f'--runner=DataflowRunner']
+    # Apache Beam実行時オプションの適用
+    print(f'Beam pipeline options={pipeline_args}')
     pipeline_options = PipelineOptions(pipeline_args)
 
-    # GCP オプション
+    # GCP オプションの可視化 (デバッグ用なのでなくてもOK)
     google_cloud_options = pipeline_options.view_as(GoogleCloudOptions)
     # ワーカーオプション
     pipeline_options.view_as(
         WorkerOptions).autoscaling_algorithm = 'THROUGHPUT_BASED'  # 自動スケーリングを有効化する
-    # 標準オプション
-    pipeline_options.view_as(
-        StandardOptions).runner = 'DataflowRunner'  # Dataflow ランナーを指定
 
     # パイプラインの記述
     with beam.Pipeline(options=pipeline_options) as p:
