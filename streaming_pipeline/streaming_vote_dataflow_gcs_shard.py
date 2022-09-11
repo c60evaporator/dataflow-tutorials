@@ -7,7 +7,7 @@ from datetime import datetime
 import logging
 import random
 
-from apache_beam import DoFn, GroupByKey, io, ParDo, Pipeline, PTransform, WindowInto, WithKeys
+import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.transforms.window import FixedWindows
 
@@ -17,10 +17,10 @@ DEFAULT_JOB_NAME = 'streaming-vote-dataflow'  # デフォルトのジョブ名
 DEFAULT_REGION = 'us-central1'  # デフォルトのリージョン
 DEFAULT_TOPIC = config['topic_id']  # デフォルトのPub/SubトピックID
 DEFAULT_SUBSCRIPTION = config['subscription_id']  # デフォルトのPub/SubサブスクリプションID
-DEFAULT_WINDOW_MINUTE = 1.0  # 集計のウィンドウ (分単位)
-DEFAULT_NUM_SHARDS = 5  # シャード数
+DEFAULT_WINDOW_MINUTE = 0.5  # 集計のウィンドウ (分単位)
+DEFAULT_NUM_SHARDS = 5  # シャーディング数 (GCSへの高速書込のためのファイル分散化数)
 
-class GroupMessagesByFixedWindows(PTransform):
+class GroupMessagesByFixedWindows(beam.PTransform):
     """A composite transform that groups Pub/Sub messages based on publish time
     and outputs a list of tuples, each containing a message and its publish time.
     """
@@ -35,41 +35,42 @@ class GroupMessagesByFixedWindows(PTransform):
             pcoll
             # Bind window info to each element using element timestamp (or publish time).
             | "Window into fixed intervals"
-            >> WindowInto(FixedWindows(self.window_size))
-            | "Add timestamp to windowed elements" >> ParDo(AddTimestamp())
-            # Assign a random key to each windowed element based on the number of shards.
-            | "Add key" >> WithKeys(lambda _: random.randint(0, self.num_shards - 1))
+            >> beam.WindowInto(FixedWindows(self.window_size))
+            # Dataflowで処理した時刻を表すタイムスタンプを追加
+            | "Add timestamp to windowed elements" >> beam.ParDo(AddTimestamp())
+            # GCSへの書込シャーディング(高速書込のための分散化)用にランダムなキーを割り振る
+            | "Add key" >> beam.WithKeys(lambda _: random.randint(0, self.num_shards - 1))
             # Group windowed elements by key. All the elements in the same window must fit
             # memory for this. If not, you need to use `beam.util.BatchElements`.
-            | "Group by key" >> GroupByKey()
+            | "Group by key" >> beam.GroupByKey()
         )
 
-class AddTimestamp(DoFn):
-    def process(self, element, publish_time=DoFn.TimestampParam):
+
+class AddTimestamp(beam.DoFn):
+    """Dataflowで処理した時刻を表すタイムスタンプを追加するクラス"""
+    def process(self, element, publish_time=beam.DoFn.TimestampParam):
         """Processes each windowed element by extracting the message body and its
         publish time into a tuple.
         """
         yield (
             element.decode("utf-8"),
-            datetime.utcfromtimestamp(float(publish_time)).strftime(
-                "%Y-%m-%d %H:%M:%S.%f"
-            ),
+            f'\n\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"',
         )
 
-class WriteToGCS(DoFn):
+class WriteToGCS(beam.DoFn):
+    """シャーディング用キーに基づきGCSに分散書き込みするクラス"""
     def __init__(self, output_path):
         self.output_path = output_path
 
-    def process(self, key_value, window=DoFn.WindowParam):
+    def process(self, key_value, window=beam.DoFn.WindowParam):
         """Write messages in a batch to Google Cloud Storage."""
-
         ts_format = "%H:%M"
         window_start = window.start.to_utc_datetime().strftime(ts_format)
         window_end = window.end.to_utc_datetime().strftime(ts_format)
         shard_id, batch = key_value
         filename = "-".join([self.output_path, window_start, window_end, str(shard_id)])
 
-        with io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
+        with beam.io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
             for message_body, publish_time in batch:
                 f.write(f"{message_body},{publish_time}\n".encode("utf-8"))
 
@@ -127,16 +128,16 @@ def run(argv=None):
         pipeline_args, streaming=True, save_main_session=True
     )
 
-    with Pipeline(options=pipeline_options) as pipeline:
+    with beam.Pipeline(options=pipeline_options) as pipeline:
         (
             pipeline
             # Because `timestamp_attribute` is unspecified in `ReadFromPubSub`, Beam
             # binds the publish time returned by the Pub/Sub server for each message
             # to the element's timestamp parameter, accessible via `DoFn.TimestampParam`.
             # https://beam.apache.org/releases/pydoc/current/apache_beam.io.gcp.pubsub.html#apache_beam.io.gcp.pubsub.ReadFromPubSub
-            | "Read from Pub/Sub" >> io.ReadFromPubSub(topic=known_args.input_topic)
+            | "Read from Pub/Sub" >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
             | "Window into" >> GroupMessagesByFixedWindows(known_args.window_size, known_args.num_shards)
-            | "Write to GCS" >> ParDo(WriteToGCS(known_args.output_path))
+            | "Write to GCS" >> beam.ParDo(WriteToGCS(known_args.output_path))
         )
 
 if __name__ == "__main__":
