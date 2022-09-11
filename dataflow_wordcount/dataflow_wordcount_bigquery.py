@@ -15,7 +15,7 @@ from apache_beam.options.pipeline_options import StandardOptions
 from apache_beam.options.pipeline_options import WorkerOptions
 
 DEFAULT_PROJECT_ID = config['project_id']  # プロジェクトID
-DEFAULT_BUCKET = config['dataflow_output_backet']  # トピックID
+DEFAULT_BUCKET = config['dataflow_output_backet']  # 一時ファイル出力先のバケット
 DEFAULT_JOB_NAME = 'compute-word-frequency'  # デフォルトのジョブ名
 DEFAULT_REGION = 'us-central1'  # デフォルトのリージョン
 
@@ -51,10 +51,10 @@ def run(argv=None):
         '--input',
         default='gs://dataflow-samples/shakespeare/kinglear.txt',
         help='Input file to process.')
-    # 出力先のパス
+    # 出力先のテーブル
     parser.add_argument(
         '--output',
-        default=f'gs://{DEFAULT_BUCKET}/results/',  # GCS に出力する
+        default=BQ_TABLE,  # デフォルトで指定するBigQueryのテーブル
         help='Output file to write results to.')
     known_args, pipeline_args = parser.parse_known_args(argv)
 
@@ -90,15 +90,14 @@ def run(argv=None):
             | 'PairWithOne' >> beam.Map(lambda x: (x, 1))  # カウント用に単語と1を(キー, 1)のように紐付ける
             | 'GroupAndSum' >> beam.CombinePerKey(sum))  # 単語(キー)ごとにカウント数を合計
 
-        # フォーマットを「単語名: カウント数」の形式に変更
+        # フォーマットを{列名1:値1, 列名2:値2..}の辞書形式に変更
         def format_result(word, count):
             return {'date': date, 'word_name': word, 'count': count}
         output = counts | 'Format' >> beam.MapTuple(format_result)
 
         # BigQueryに出力
-        #output | 'Write' >> WriteToText(known_args.output)
         output | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-            BQ_TABLE,
+            known_args.output,
             schema=BQ_SCHEMA,
             insert_retry_strategy='RETRY_ON_TRANSIENT_ERROR',
             create_disposition='CREATE_IF_NEEDED',
