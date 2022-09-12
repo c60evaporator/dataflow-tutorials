@@ -53,9 +53,11 @@ def run(argv=None):
         help='Input file to process.')
     # 出力先のテーブル
     parser.add_argument(
-        '--output',
+        '--output_table',
         default=BQ_TABLE,  # デフォルトで指定するBigQueryのテーブル
-        help='Output file to write results to.')
+        help=(
+            'Output BigQuery table for results specified as: '
+            'PROJECT:DATASET.TABLE or DATASET.TABLE.'))
     # 入力した引数をknown_args(本スクリプトで使用する入出力用の引数)とpipeline_args(Apache Beam実行時のオプション)に分割
     known_args, pipeline_args = parser.parse_known_args(argv)
     
@@ -102,7 +104,7 @@ def run(argv=None):
 
         # BigQueryに出力
         output | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-            known_args.output,
+            known_args.output_table,
             schema=BQ_SCHEMA,
             insert_retry_strategy='RETRY_ON_TRANSIENT_ERROR',
             create_disposition='CREATE_IF_NEEDED',
