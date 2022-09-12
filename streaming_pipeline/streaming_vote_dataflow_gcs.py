@@ -52,7 +52,7 @@ class AddTimestamp(beam.DoFn):
     """
     def process(self, element, publish_time=beam.DoFn.TimestampParam, window=beam.DoFn.WindowParam):
         yield element.decode("utf-8")[:-1] \
-            + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"' \
+            + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f UTC")}\"' \
             + f',\"WindowStart\":\"{window.start.to_utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f UTC")}\"' + '}'
 
 class WriteToGCS(beam.DoFn):
