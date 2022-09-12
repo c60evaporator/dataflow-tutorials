@@ -39,24 +39,17 @@ from apache_beam.options.pipeline_options import PipelineOptions
 
 DEFAULT_PROJECT_ID = config['project_id']  # プロジェクトID
 DEFAULT_BUCKET = config['dataflow_output_backet']  # 一時ファイル出力先のバケット
-DEFAULT_JOB_NAME = 'streaming-vote-dataflow'  # デフォルトのジョブ名
 DEFAULT_REGION = 'us-central1'  # デフォルトのリージョン
 DEFAULT_TOPIC = config['topic_id']  # デフォルトのPub/SubトピックID
-DEFAULT_SUBSCRIPTION = config['subscription_id']  # デフォルトのPub/SubサブスクリプションID
-DEFAULT_WINDOW_MINUTE = 0.5  # 集計のウィンドウ (分単位)
 
 # BigQueryのテーブル名(`データセット名.テーブル名`のフォーマット)
 BQ_TABLE = 'dataflow_test.window_wordcount'
-
+# BigQueryのスキーマ
 BQ_SCHEMA = ({'fields': [{'name': 'word', 'type': 'STRING', 'mode': 'REQUIRED'},
                          {'name': 'count', 'type': 'INTEGER', 'mode': 'REQUIRED'},
                          {'name': 'window_start', 'type': 'TIMESTAMP', 'mode': 'REQUIRED'},
                          {'name': 'window_end', 'type': 'TIMESTAMP', 'mode': 'REQUIRED'}
                          ]})
-
-TABLE_SCHEMA = (
-    'word:STRING, count:INTEGER, '
-    'window_start:TIMESTAMP, window_end:TIMESTAMP')
 
 
 def find_words(element):

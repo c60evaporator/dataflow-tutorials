@@ -14,10 +14,8 @@ from apache_beam.transforms.window import FixedWindows
 
 DEFAULT_PROJECT_ID = config['project_id']  # プロジェクトID
 DEFAULT_BUCKET = config['dataflow_output_backet']  # 一時ファイル出力先のバケット
-DEFAULT_JOB_NAME = 'streaming-vote-dataflow'  # デフォルトのジョブ名
 DEFAULT_REGION = 'us-central1'  # デフォルトのリージョン
 DEFAULT_TOPIC = config['topic_id']  # デフォルトのPub/SubトピックID
-DEFAULT_SUBSCRIPTION = config['subscription_id']  # デフォルトのPub/SubサブスクリプションID
 DEFAULT_WINDOW_MINUTE = 0.5  # 集計のウィンドウ (分単位)
 DEFAULT_NUM_SHARDS = 5  # シャーディング数 (GCSへの高速書込のためのファイル分散化数)
 
