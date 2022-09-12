@@ -1,5 +1,5 @@
 """
-以下のサンプルコードをVSCodeのデバッグモードで動くよう改良し、出力先をGCSに変更
+以下のサンプルコードをVSCodeのデバッグモードで動くよう改良し、出力先をGCSに変更(エラーは出るが一応動く、Window内の最後のデータしか保存されないので今後要改良)
 https://github.com/apache/beam/blob/master/sdks/python/apache_beam/examples/windowed_wordcount.py
 """
 import yaml
@@ -98,7 +98,7 @@ def main(argv=None):
     # 出力先のパス
     parser.add_argument(
         '--output_path',
-        default=f'gs://{DEFAULT_BUCKET}/results/',  # GCS に出力する
+        default=f'gs://{DEFAULT_BUCKET}/samples/output',  # GCS に出力する
         help='Output file to write results to.')
     # 入力した引数をknown_args(本スクリプトで使用する入出力用の引数)とpipeline_args(Apache Beam実行時のオプション)に分割
     known_args, pipeline_args = parser.parse_known_args(argv)
