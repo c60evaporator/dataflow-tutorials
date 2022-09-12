@@ -51,11 +51,12 @@ class TransformToDictByFixedWindows(beam.PTransform):
 
 class AddTimestamp(beam.DoFn):
     """
-    Dataflowで処理した時刻を表すタイムスタンプを追加するクラス
+    Dataflowで処理した時刻を表すタイムスタンプと、ウィンドウ開始時刻を追加するクラス
     """
-    def process(self, element, publish_time=beam.DoFn.TimestampParam):
+    def process(self, element, publish_time=beam.DoFn.TimestampParam, window=beam.DoFn.WindowParam):
         yield element.decode("utf-8")[:-1] \
-            + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"' + '}'
+            + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f")}\"' \
+            + f',\"WindowStart\":\"{window.start.to_utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f UTC")}\"' + '}'
 
 class WriteToGCS(beam.DoFn):
     """シャーディング用キーに基づきGCSに分散書き込みするクラス"""
