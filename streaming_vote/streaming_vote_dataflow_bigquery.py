@@ -27,33 +27,6 @@ BQ_SCHEMA = ({'fields': [{'name': 'Date', 'type': 'DATETIME', 'mode': 'REQUIRED'
                          {'name': 'WindowStart', 'type': 'TIMESTAMP', 'mode': 'REQUIRED'}
                          ]})
 
-class TransformToDictByFixedWindows(beam.PTransform):
-    """
-    Pub/Subメッセージをタイムスタンプでウィンドウ処理してデータをdict化し、一括でグルーピングするクラス
-    (クラス化せずに直接パイプラインを記述するとウインドウ作成後のGroupByKeyによるグルーピングがうまくいかない)
-    """
-
-    def __init__(self, window_size):
-        # Set window size to 60 seconds.
-        self.window_size = int(window_size * 60)
-
-    def expand(self, pcoll):
-        """各種処理のパイプラインを記載"""
-        return (
-            pcoll
-            # タイムスタンプに応じてウィンドウを振り分け
-            | "Window into fixed intervals"
-            >> beam.WindowInto(FixedWindows(self.window_size))
-            # Dataflowで処理した時刻を表すタイムスタンプを追加 (この時刻に応じてウィンドウが決まる)
-            | "Add timestamp to windowed elements" >> beam.ParDo(AddTimestamp())
-            # 各レコードをdict形式に変換
-            | 'Format to dict' >> beam.Map(lambda record: ast.literal_eval(record))
-            # グルーピング用にウィンドウのスタート時間をキーに設定
-            | "Add key" >> beam.WithKeys(lambda _: 1)
-            # グルーピングしてウィンドウ内のデータを一つにまとめる
-            | "Group by key" >> beam.GroupByKey()
-        )
-
 class AddTimestamp(beam.DoFn):
     """
     Dataflowで処理した時刻を表すタイムスタンプと、ウィンドウ開始時刻を追加するクラス
@@ -62,21 +35,6 @@ class AddTimestamp(beam.DoFn):
         yield element.decode("utf-8")[:-1] \
             + f',\"DataflowTimestamp\":\"{datetime.utcfromtimestamp(float(publish_time)).strftime("%Y-%m-%d %H:%M:%S.%f UTC")}\"' \
             + f',\"WindowStart\":\"{window.start.to_utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f UTC")}\"' + '}'
-
-class WriteToGCS(beam.DoFn):
-    """キーに基づきGCSに分散書き込みするクラス"""
-    def __init__(self, output_path):
-        self.output_path = output_path
-
-    def process(self, batch, window=beam.DoFn.WindowParam):
-        """Write messages in a batch to Google Cloud Storage."""
-        ts_format = "%H:%M"
-        window_start = window.start.to_utc_datetime().strftime(ts_format)
-        window_end = window.end.to_utc_datetime().strftime(ts_format)
-        filename = "-".join([self.output_path, window_start, window_end])
-
-        with beam.io.gcsio.GcsIO().open(filename=filename, mode="w") as f:
-            f.write(f"{batch}\n".encode("utf-8"))
 
 def run(argv=None):
     parser = argparse.ArgumentParser()
